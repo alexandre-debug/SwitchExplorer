@@ -32,7 +32,24 @@ namespace SwitchExplorer
         public IAudioFormat SoundFile { get; set; }
         public string SoundName { get; set; }
 
-        public UI() => InitializeComponent();
+        public UI()
+        {
+            InitializeComponent();
+            timeBeginPeriod(timerAccuracy);
+        }
+
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            timeEndPeriod(timerAccuracy);
+            base.OnFormClosed(e);
+        }
+
+        // Pinvoke:
+        private const int timerAccuracy = 10;
+        [System.Runtime.InteropServices.DllImport("winmm.dll")]
+        private static extern int timeBeginPeriod(int msec);
+        [System.Runtime.InteropServices.DllImport("winmm.dll")]
+        public static extern int timeEndPeriod(int msec);
 
         public bool CheckExtension(string Target, string Extension)
         {
@@ -71,12 +88,16 @@ namespace SwitchExplorer
             Program.FileArg = null;
             Stream Input = null;
 
+            label8.Visible = true;
+            this.Update();
+
             try
             {
                 string ExpEnv(string In) => Environment.ExpandEnvironmentVariables(In);
 
                 var ProdKeys  = ExpEnv(@"%USERPROFILE%\.switch\prod.keys");
                 var TitleKeys = ExpEnv(@"%USERPROFILE%\.switch\title.keys");
+                Console.WriteLine(FileToOpen);
 
                 var Keys = ExternalKeys.ReadKeyFile(ProdKeys, TitleKeys);
 
@@ -137,7 +158,7 @@ namespace SwitchExplorer
 
                         if (isUpdateNca)
                         {
-                            openFileDialog1.Title = "Select base Nca";
+                            openFileDialog1.Title = ">>> SELECT BASE NCA <<<";
                             openFileDialog1.ShowDialog();
                             var Input2 = File.OpenRead(openFileDialog1.FileName);
                             Patch = new Nca(Keys, Input2.AsStorage(), true);
@@ -154,16 +175,23 @@ namespace SwitchExplorer
 
                         Rom = new Romfs (
                             Nca.OpenSection(Nca.Sections.FirstOrDefault
-                            (s => s?.Type == SectionType.Romfs || s?.Type == SectionType.Bktr)
+                            (s => s?.Type == SectionType.Romfs ||s?.Type == SectionType.Bktr)
                             .SectionNum, false, IntegrityCheckLevel.None, true)
                         );
 
                         IO.PopulateTreeView(treeView1.Nodes, Rom.RootDir);
                     }
                 }
-                catch { MessageBox.Show("There was an error reading the NCA. Are you sure the correct keys are present in your keyfiles?"); }
+                catch(Exception e) {
+                    Console.WriteLine(e);
+                    MessageBox.Show("There was an error reading the NCA. Are you sure the correct keys are present in your keyfiles?");
+                    label8.Visible = false;
+                    this.Update();
+                }
             }
             catch (ArgumentNullException) { MessageBox.Show("Error: key files are missing!"); }
+            label8.Visible = false;
+            this.Update();
         }
 
         private void OpenToolStripMenuItem_Click(object sender, EventArgs e)
@@ -373,6 +401,22 @@ namespace SwitchExplorer
         {
             folderBrowserDialog1.ShowDialog();
             File.WriteAllLines($"{folderBrowserDialog1.SelectedPath}/{Nca.Header.TitleId:x16}_files.txt", Rom.FileDict.Keys);
+            
+        }
+
+        private void ExportUpdateDataToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            folderBrowserDialog1.ShowDialog();
+            label8.Visible = true;
+            this.Update();
+            string content = "";
+            foreach (RomfsFile fsfile in Rom.Files)
+            {
+                content += fsfile.Name + " - " + fsfile.DataLength + "\n";
+            }
+            File.WriteAllText($"{folderBrowserDialog1.SelectedPath}/update_files.txt", content);
+            label8.Visible = false;
+            this.Update();
         }
 
         private void IconToolStripMenuItem_Click(object sender, EventArgs e)
@@ -454,6 +498,135 @@ namespace SwitchExplorer
                 }
             }
             catch { }
+        }
+
+        private void Open_NSP_Update(object sender, EventArgs e)
+        {
+            var Dialog = openFileDialog1.ShowDialog();
+            if (Dialog != DialogResult.Cancel)
+            {
+                Console.WriteLine("LOADING.");
+                label8.Visible = true;
+                this.Update();
+                treeView1.Nodes.Clear();
+
+                string FileToOpen = null;
+
+                if (Program.FileArg != null) FileToOpen = Program.FileArg;
+                else FileToOpen = openFileDialog1.FileName;
+
+                Program.FileArg = null;
+                Stream Input = null;
+
+                try
+                {
+                    string ExpEnv(string In) => Environment.ExpandEnvironmentVariables(In);
+
+                    var ProdKeys = ExpEnv(@"%USERPROFILE%\.switch\prod.keys");
+                    var TitleKeys = ExpEnv(@"%USERPROFILE%\.switch\title.keys");
+                    Console.WriteLine(FileToOpen);
+
+                    var Keys = ExternalKeys.ReadKeyFile(ProdKeys, TitleKeys);
+
+                    var Ext = (new FileInfo(FileToOpen).Extension);
+                    if (Ext == ".nsp")
+                    {
+                        var InputPFS = File.OpenRead(FileToOpen);
+                        var Pfs = new Pfs(InputPFS.AsStorage());
+                        var CnmtNca = new Nca(Keys, Pfs.OpenFile(Pfs.Files.FirstOrDefault(s => s.Name.Contains(".cnmt.nca"))), false);
+                        var CnmtPfs = new Pfs(CnmtNca.OpenSection(0, false, IntegrityCheckLevel.None, true));
+                        var Cnmt = new Cnmt(CnmtPfs.OpenFile(CnmtPfs.Files[0]).AsStream());
+                        var Program = Cnmt.ContentEntries.FirstOrDefault(c => c.Type == CnmtContentType.Program);
+                        var CtrlEntry = Cnmt.ContentEntries.FirstOrDefault(c => c.Type == CnmtContentType.Control);
+                        if (CtrlEntry != null)
+                            Control = new Nca(Keys, Pfs.OpenFile($"{CtrlEntry.NcaId.ToHexString().ToLower()}.nca"), false);
+                        Input = Pfs.OpenFile($"{Program.NcaId.ToHexString().ToLower()}.nca").AsStream();
+                    }
+                    else Input = File.OpenRead(FileToOpen);
+
+                    try
+                    {
+                        Nca = new Nca(Keys, Input.AsStorage(), true);
+
+                        if (Nca.HasRightsId && !Keys.TitleKeys.Keys.Any(k => k.SequenceEqual(Nca.Header.RightsId)))
+                            MessageBox.Show($"Error: the titlekey for {Nca.Header.RightsId.ToHexString().ToLower()} is not present in your key file.");
+                        else
+                        {
+                            var isUpdateNca = false;
+
+                            if (Nca.Sections.Any(s => s?.Type == SectionType.Bktr))
+                                isUpdateNca = true;
+
+                            if (isUpdateNca)
+                            {
+                                var InputPFS = File.OpenRead(FileToOpen);
+                                var Pfs = new Pfs(InputPFS.AsStorage());
+                                var CnmtNca = new Nca(Keys, Pfs.OpenFile(Pfs.Files.FirstOrDefault(s => s.Name.Contains(".cnmt.nca"))), false);
+                                var CnmtPfs = new Pfs(CnmtNca.OpenSection(0, false, IntegrityCheckLevel.None, true));
+                                var Cnmt = new Cnmt(CnmtPfs.OpenFile(CnmtPfs.Files[0]).AsStream());
+                                var Program = Cnmt.ContentEntries.FirstOrDefault(c => c.Type == CnmtContentType.Program);
+                                var CtrlEntry = Cnmt.ContentEntries.FirstOrDefault(c => c.Type == CnmtContentType.Control);
+                                if (CtrlEntry != null)
+                                    Control = new Nca(Keys, Pfs.OpenFile($"{CtrlEntry.NcaId.ToHexString().ToLower()}.nca"), false);
+                                Input = Pfs.OpenFile($"{Program.NcaId.ToHexString().ToLower()}.nca").AsStream();
+
+                                var Input2 = Pfs.OpenFile($"{Program.NcaId.ToHexString().ToLower()}.nca").AsStream();
+                                Patch = new Nca(Keys, Input2.AsStorage(), true);
+                                Nca.SetBaseNca(Patch);
+                            }
+
+                            new Thread
+                            (() =>
+                            {
+                                Thread.CurrentThread.IsBackground = true;
+                                var Info = GetTitleMeta($"{Nca.Header.TitleId:x16}");
+                                label2.Invoke(new Action(() => { label2.Text = Info[0]; label3.Text = Info[1]; }));
+                            }).Start();
+
+                            Rom = new Romfs(
+                                Nca.OpenSection(Nca.Sections.FirstOrDefault
+                                (s => s?.Type == SectionType.Romfs || s?.Type == SectionType.Bktr)
+                                .SectionNum, false, IntegrityCheckLevel.None, true)
+                            );
+
+                            IO.PopulateTreeView(treeView1.Nodes, Rom.RootDir);
+
+                            Console.WriteLine("DONE.");
+                            label8.Visible = false;
+                            this.Update();
+                        }
+                    }
+                    catch
+                    {
+                        MessageBox.Show("There was an error reading the NCA. Are you sure the correct keys are present in your keyfiles?");
+                    }
+                }
+                catch (ArgumentNullException) { MessageBox.Show("Error: key files are missing!"); }
+            }
+        }
+
+        private void Compare_TwoUpdates(object sender, EventArgs e)
+        {
+            //TODO impl
+        }
+
+        private void exportTextTocnmtToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            var Dialog = folderBrowserDialog1.ShowDialog();
+            if (Dialog != DialogResult.Cancel)
+            {
+                Console.WriteLine("Récup des messages");
+                foreach (string f in Rom.FileDict.Keys)
+                {
+                    if (f.StartsWith("/Message/"))
+                    {
+                        var File = Rom.FileDict[f];
+                        Rom.OpenFile(File).WriteAllBytes($"{folderBrowserDialog1.SelectedPath}/{f.Substring(9)}");
+                    }
+                }
+                Console.WriteLine("Dézippage");
+
+            }
         }
     }
 }
