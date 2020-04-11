@@ -24,3 +24,6 @@ C:\Users\Alexandre\Desktop\Docs\Projets\SwitchExplorer\obj\Debug\SwitchExplorer.
 C:\Users\Alexandre\Desktop\Docs\Projets\SwitchExplorer\obj\Debug\SwitchExplorer.exe
 C:\Users\Alexandre\Desktop\Docs\Projets\SwitchExplorer\obj\Debug\SwitchExplorer.pdb
 C:\Users\Alexandre\Desktop\Docs\Projets\SwitchExplorer\bin\Debug\System.Numerics.Vectors.xml
+C:\Users\Alexandre\Desktop\Docs\Projets\SwitchExplorer\bin\Debug\System.Management.Automation.dll
+C:\Users\Alexandre\Desktop\Docs\Projets\SwitchExplorer\bin\Debug\Microsoft.Management.Infrastructure.dll
+C:\Users\Alexandre\Desktop\Docs\Projets\SwitchExplorer\bin\Debug\System.Management.Automation.xml

@@ -2,21 +2,24 @@
 using LibHac.IO;
 using Newtonsoft.Json;
 using System;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Management.Automation;
 using System.Media;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Forms;
 using VGAudio.Formats;
+using Application = System.Windows.Forms.Application;
 
 namespace SwitchExplorer
 {
     public partial class UI : Form
     {
-        public const int WM_NCLBUTTONDOWN = 0xA1;
-        public const int HT_CAPTION = 0x2;
+        private const int wM_NCLBUTTONDOWN = 0xA1;
+        private const int hT_CAPTION = 0x2;
 
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         public static extern int SendMessage(IntPtr hWnd, int Msg, int wParam, int lParam);
@@ -32,15 +35,21 @@ namespace SwitchExplorer
         public IAudioFormat SoundFile { get; set; }
         public string SoundName { get; set; }
 
+        public static int WM_NCLBUTTONDOWN => wM_NCLBUTTONDOWN;
+
+        public static int HT_CAPTION => hT_CAPTION;
+
+        public static int TimerAccuracy => timerAccuracy;
+
         public UI()
         {
             InitializeComponent();
-            timeBeginPeriod(timerAccuracy);
-        }
+            timeBeginPeriod(TimerAccuracy);
+            }
 
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
-            timeEndPeriod(timerAccuracy);
+            timeEndPeriod(TimerAccuracy);
             base.OnFormClosed(e);
         }
 
@@ -76,6 +85,7 @@ namespace SwitchExplorer
             return Info;
         }
 
+        //Classic Open
         private void Open()
         {
             treeView1.Nodes.Clear();
@@ -299,14 +309,15 @@ namespace SwitchExplorer
             }
         }
 
+        //Extract game or files
         private void Extract()
         {
             string Dir = null;
-            var Dialog = folderBrowserDialog1.ShowDialog();
+            var Dialog = folderBrowser.ShowDialog();
 
             if (Dialog != DialogResult.Cancel)
             {
-                Dir = folderBrowserDialog1.SelectedPath;
+                Dir = folderBrowser.SelectedPath;
                 if (treeView1.SelectedNode.Nodes.Count == 0)
                 {
                     var File = Rom.FileDict[$"/{treeView1.SelectedNode.FullPath}"];
@@ -335,9 +346,9 @@ namespace SwitchExplorer
 
         private void AllFilesToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            var Dialog = folderBrowserDialog1.ShowDialog();
+            var Dialog = folderBrowser.ShowDialog();
             if (Dialog != DialogResult.Cancel)
-                Rom.Extract(folderBrowserDialog1.SelectedPath);
+                Rom.Extract(folderBrowser.SelectedPath);
         }
 
         private void ExpandAllNodesToolStripMenuItem_Click(object sender, EventArgs e) => treeView1.ExpandAll();
@@ -351,7 +362,7 @@ namespace SwitchExplorer
             }
         }
 
-        private void Button1_Click(object sender, EventArgs e) => Environment.Exit(0);
+        private void Exit(object sender, EventArgs e) => Environment.Exit(0);
 
         private void TreeView1_DragEnter(object sender, DragEventArgs e)
         {
@@ -365,6 +376,7 @@ namespace SwitchExplorer
             Open();
         }
 
+        //Play audio
         private void Button2_Click_1(object sender, EventArgs e)
         {
             using (var Wav = new MemoryStream())
@@ -389,24 +401,25 @@ namespace SwitchExplorer
 
         private void DToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            var Dialog = folderBrowserDialog1.ShowDialog();
+            var Dialog = folderBrowser.ShowDialog();
             if (Dialog != DialogResult.Cancel)
             {
-                try { Nca.ExportSection((int)ProgramPartitionType.Code, folderBrowserDialog1.SelectedPath); }
+                try { Nca.ExportSection((int)ProgramPartitionType.Code, folderBrowser.SelectedPath); }
                 catch { MessageBox.Show("Error: this NCA does not contain an ExeFS partition."); }
             }
         }
 
+        //Extract all
         private void ListOfFilesToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            folderBrowserDialog1.ShowDialog();
-            File.WriteAllLines($"{folderBrowserDialog1.SelectedPath}/{Nca.Header.TitleId:x16}_files.txt", Rom.FileDict.Keys);
-            
+            folderBrowser.ShowDialog();
+            File.WriteAllLines($"{folderBrowser.SelectedPath}/{Nca.Header.TitleId:x16}_files.txt", Rom.FileDict.Keys);
         }
 
+        //Export list of files & length
         private void ExportUpdateDataToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            folderBrowserDialog1.ShowDialog();
+            folderBrowser.ShowDialog();
             label8.Visible = true;
             this.Update();
             string content = "";
@@ -414,7 +427,7 @@ namespace SwitchExplorer
             {
                 content += fsfile.Name + " - " + fsfile.DataLength + "\n";
             }
-            File.WriteAllText($"{folderBrowserDialog1.SelectedPath}/update_files.txt", content);
+            File.WriteAllText($"{folderBrowser.SelectedPath}/update_files.txt", content);
             label8.Visible = false;
             this.Update();
         }
@@ -426,18 +439,18 @@ namespace SwitchExplorer
                 using (var Rom = Control.OpenSection(0, false, IntegrityCheckLevel.None, true))
                 {
                     var Romfs = new Romfs(Rom);
-                    var Dialog = folderBrowserDialog1.ShowDialog();
+                    var Dialog = folderBrowser.ShowDialog();
 
                     if (Dialog != DialogResult.Cancel)
                         using (var Icon = Romfs.OpenFile(Romfs.Files.FirstOrDefault(f => f.Name.Contains("icon"))))
-                            Icon.WriteAllBytes($"{folderBrowserDialog1.SelectedPath}/{Control.Header.TitleId:x16}_icon.jpg");
+                            Icon.WriteAllBytes($"{folderBrowser.SelectedPath}/{Control.Header.TitleId:x16}_icon.jpg");
                 }
             }
             else if (pictureBox1.Image != null)
             {
-                var Dialog = folderBrowserDialog1.ShowDialog();
+                var Dialog = folderBrowser.ShowDialog();
                 if (Dialog != DialogResult.Cancel)
-                    pictureBox1.Image.Save($"{folderBrowserDialog1.SelectedPath}/{Nca.Header.TitleId:x16}_icon.jpg");
+                    pictureBox1.Image.Save($"{folderBrowser.SelectedPath}/{Nca.Header.TitleId:x16}_icon.jpg");
             }
             else
                 MessageBox.Show("Error: No control is present!");
@@ -450,10 +463,10 @@ namespace SwitchExplorer
                 using (var Rom = Control.OpenSection(0, false, IntegrityCheckLevel.None, true))
                 {
                     var Romfs = new Romfs(Rom);
-                    var Dialog = folderBrowserDialog1.ShowDialog();
+                    var Dialog = folderBrowser.ShowDialog();
                     if (Dialog != DialogResult.Cancel)
                         using (var Nacp = Romfs.OpenFile(Romfs.Files.FirstOrDefault(f => f.Name == "control.nacp")))
-                            Nacp.WriteAllBytes($"{folderBrowserDialog1.SelectedPath}/{Nca.Header.TitleId:x16}_control.nacp");
+                            Nacp.WriteAllBytes($"{folderBrowser.SelectedPath}/{Nca.Header.TitleId:x16}_control.nacp");
                 }
             }
             else MessageBox.Show("Error: No control is present!");
@@ -466,14 +479,14 @@ namespace SwitchExplorer
                 using (var Rom = Control.OpenSection(0, false, IntegrityCheckLevel.None, true))
                 {
                     var Romfs = new Romfs(Rom);
-                    var Dialog = folderBrowserDialog1.ShowDialog();
+                    var Dialog = folderBrowser.ShowDialog();
                     if (Dialog != DialogResult.Cancel)
                         using (var InFile = Romfs.OpenFile(Romfs.Files.FirstOrDefault(f => f.Name == "control.nacp")))
                         {
                             var Nacp = new Nacp(InFile.AsStream());
                             var Settings = new JsonSerializerSettings { Formatting = Formatting.Indented };
 
-                            File.WriteAllText($"{folderBrowserDialog1.SelectedPath}/{Nca.Header.TitleId:x16}_control.json",
+                            File.WriteAllText($"{folderBrowser.SelectedPath}/{Nca.Header.TitleId:x16}_control.json",
                                 JsonConvert.SerializeObject(Nacp, Settings));
                         }
                 }
@@ -486,11 +499,10 @@ namespace SwitchExplorer
         {
             try
             {
-                folderBrowserDialog1.ShowDialog();
+                folderBrowser.ShowDialog();
 
-                using (var Wav = File.OpenWrite($"{folderBrowserDialog1.SelectedPath}/{SoundName}.wav"))
+                using (var Wav = File.OpenWrite($"{folderBrowser.SelectedPath}/{SoundName}.wav"))
                 {
-
                     new VGAudio.Containers.Wave.WaveWriter()
                     { Configuration = new VGAudio.Containers.Wave.WaveConfiguration
                         { Codec = VGAudio.Containers.Wave.WaveCodec.Pcm16Bit }
@@ -500,6 +512,7 @@ namespace SwitchExplorer
             catch { }
         }
 
+        //Open update only
         private void Open_NSP_Update(object sender, EventArgs e)
         {
             var Dialog = openFileDialog1.ShowDialog();
@@ -592,6 +605,7 @@ namespace SwitchExplorer
                             IO.PopulateTreeView(treeView1.Nodes, Rom.RootDir);
 
                             Console.WriteLine("DONE.");
+                            fileToolStripMenuItem.Text = "File / Explore";
                             label8.Visible = false;
                             this.Update();
                         }
@@ -605,27 +619,46 @@ namespace SwitchExplorer
             }
         }
 
-        private void Compare_TwoUpdates(object sender, EventArgs e)
-        {
-            //TODO impl
-        }
-
+        //Export all messages to CNMT
         private void exportTextTocnmtToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            var Dialog = folderBrowserDialog1.ShowDialog();
-            if (Dialog != DialogResult.Cancel)
-            {
-                Console.WriteLine("Récup des messages");
-                foreach (string f in Rom.FileDict.Keys)
+            
+        if(Rom != null) { 
+                var Dialog = folderBrowser.ShowDialog();
+                if (Dialog != DialogResult.Cancel)
                 {
-                    if (f.StartsWith("/Message/"))
+                    foreach (string f in Rom.FileDict.Keys)
                     {
-                        var File = Rom.FileDict[f];
-                        Rom.OpenFile(File).WriteAllBytes($"{folderBrowserDialog1.SelectedPath}/{f.Substring(9)}");
+                        if (f.StartsWith("/Message/"))
+                        {
+                            var File = Rom.FileDict[f];
+                            Rom.OpenFile(File).WriteAllBytes($"{folderBrowser.SelectedPath}/{f.Substring(9)}");
+                        }
+                    }
+                    string outputDir = System.IO.Path.GetDirectoryName(Application.ExecutablePath);
+                    Console.WriteLine("a");
+                    System.Diagnostics.Process.Start(Path.Combine(outputDir, "zs/7z.exe"), $"e {folderBrowser.SelectedPath}/{"*.zs"} -o{folderBrowser.SelectedPath}").WaitForExit();
+                    Console.WriteLine("b");
+
+                    DirectoryInfo d = new DirectoryInfo(folderBrowser.SelectedPath);
+                    foreach (var file in d.GetFiles("*"))
+                    {
+                        if (file.Extension == ".zs")
+                        {
+                            file.Delete();
+                        }
+                        else if (file.Extension == ".sarc")
+                        {
+                            Process p = System.Diagnostics.Process.Start(Path.Combine(outputDir, "sarc/sarc_tool.exe"), file.FullName);
+                            p.WaitForExit();
+                            p.Close();
+                            file.Delete();
+                        }
                     }
                 }
-                Console.WriteLine("Dézippage");
-
+            } else
+            {
+                MessageBox.Show("Please load the files first !");
             }
         }
     }
